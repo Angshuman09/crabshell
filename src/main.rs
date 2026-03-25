@@ -1,6 +1,9 @@
+use std::fs;
 use std::io::{self, Write};
-use std::path::{ Path};
+use std::path::Path;
 use std::env;
+use std::os::unix::fs::PermissionsExt;
+use std::process::Command;
 
 fn main(){
     let builtins = ["echo", "exit", "type"];
@@ -31,14 +34,24 @@ fn main(){
             
             if builtins.contains(&cmd_to_check){
                 println!("{} is a shell builtin", cmd_to_check);
-            }else if let Some(path) = find_in_path(cmd){
+            }else if let Some(path) = find_in_path(cmd_to_check){
                 println!("{} is {}",cmd_to_check, path);
             }else{
                 println!("{}: not found", cmd_to_check);
             }
         },
         _ =>{
-            println!("{} not found", cmd);
+            if let Some(path) = find_in_path(cmd){
+                let mut child = Command::new(path)
+                                    .args(args)
+                                    .spawn()
+                                    .expect("Failed to execute command");
+                                // println!("{:?}", child );
+
+                                child.wait().expect("Process wasn't running");
+            }else{
+                println!("{} command not found", cmd);
+            }
         }
     }
     }
@@ -46,13 +59,23 @@ fn main(){
 
 fn find_in_path(cmd: &str) -> Option<String>{
     let path_env = env::var("PATH").ok()?;
+    // println!("path env: {:?}", path_env );
 
     for dir in path_env.split(":"){
         let full_path = Path::new(dir).join(cmd);
+        // println!("full path: {:?}", full_path );
 
-        if full_path.is_file(){
-            return Some(full_path.to_string_lossy().to_string());
+        if let Ok(metadata) = fs::metadata(&full_path){
+            // println!("{:?}", metadata);
+            if metadata.is_file(){
+                let mode = metadata.permissions().mode();
+                // println!("{}",mode);
+                if mode & 0o111 != 0{
+                    return Some(full_path.to_string_lossy().to_string());
+                }
+            }
         }
+
     }
     None
 }
