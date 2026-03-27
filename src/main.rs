@@ -1,13 +1,13 @@
-use std::fs;
+mod parser;
+mod utils;
+mod builtins;
 use std::io::{self, Write};
-use std::path::Path;
-use std::env;
-use std::os::unix::fs::PermissionsExt;
+use crate::builtins::{ handle_cd, handle_echo, handle_pwd, handle_type};
+use crate::utils::find_in_path;
 use std::process::Command;
+use crate::parser::tokenize;
 
 fn main(){
-    let builtins = ["echo", "exit", "type"];
-
     loop{
     print!("$ ");
     io::stdout().flush().unwrap();
@@ -18,64 +18,31 @@ fn main(){
 
     if input.is_empty() { continue; }
 
-    let parts: Vec<&str> = input.split_whitespace().collect();
+    let token = tokenize(input);
+    let command = &token[0];
+    let args = &token[1..];
 
-    let cmd = parts[0];
-    let args = &parts[1..];
+    match command.as_str(){
 
-    match cmd{
-
-        "exit" => break,
-        "echo" => println!("{}", args.join(" ")),
-        "type" =>{
-            if args.is_empty() { continue; }
-
-            let cmd_to_check = args[0];
-            
-            if builtins.contains(&cmd_to_check){
-                println!("{} is a shell builtin", cmd_to_check);
-            }else if let Some(path) = find_in_path(cmd_to_check){
-                println!("{} is {}",cmd_to_check, path);
-            }else{
-                println!("{}: not found", cmd_to_check);
-            }
-        },
-        _ =>{
-            if let Some(path) = find_in_path(cmd){
+        "exit"=> break,
+        "echo"=> handle_echo(args),
+        "pwd"=> handle_pwd(),
+        "cd"=>handle_cd(args),
+        "type"=> handle_type(args),
+        external_cmd=>{
+            if let Some(path) = find_in_path(external_cmd){
                 let mut child = Command::new(path)
                                     .args(args)
-                                    .spawn()
+                                   .spawn()
                                     .expect("Failed to execute command");
                                 // println!("{:?}", child );
 
                                 child.wait().expect("Process wasn't running");
             }else{
-                println!("{} command not found", cmd);
+                println!("{} command not found", external_cmd);
             }
         }
     }
     }
 }
 
-fn find_in_path(cmd: &str) -> Option<String>{
-    let path_env = env::var("PATH").ok()?;
-    // println!("path env: {:?}", path_env );
-
-    for dir in path_env.split(":"){
-        let full_path = Path::new(dir).join(cmd);
-        // println!("full path: {:?}", full_path );
-
-        if let Ok(metadata) = fs::metadata(&full_path){
-            // println!("{:?}", metadata);
-            if metadata.is_file(){
-                let mode = metadata.permissions().mode();
-                // println!("{}",mode);
-                if mode & 0o111 != 0{
-                    return Some(full_path.to_string_lossy().to_string());
-                }
-            }
-        }
-
-    }
-    None
-}
