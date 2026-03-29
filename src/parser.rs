@@ -11,6 +11,24 @@ pub fn tokenize(input: &str) -> Vec<String> {
 
     while let Some(c) = chars.next(){
          match c {
+            '\\' if !in_single_quote && !in_double_quote=>{
+                if let Some(next_c) = chars.next(){
+                    current.push(next_c);
+                    has_content = true;
+                }
+            }
+            '\\' if in_double_quote=>{
+                if let Some(&next_c) = chars.peek(){
+                    if next_c == '\\' || next_c == '$' || next_c == '"' || next_c == '\n'{
+                        current.push(chars.next().unwrap()); 
+                }else{
+                    current.push('\\');
+                }
+            }else{
+                current.push('\\');
+            }
+            has_content = true;
+            }
             '\'' if !in_double_quote =>{
                 in_single_quote = !in_single_quote;
                 has_content = true;
